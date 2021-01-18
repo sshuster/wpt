@@ -3395,10 +3395,11 @@ policies and contribution forms [3].
                                     while (status_text.hasOwnProperty(i)) {
                                         if (status_number.hasOwnProperty(status_text[i])) {
                                             var status = status_text[i];
-                                            rv[0].push(["div", {"class":status_class(status)},
+                                            rv[0].push(["div", {},
                                                         ["label", {},
                                                          ["input", {type:"checkbox", checked:"checked"}],
-                                                         status_number[status] + " " + status]]);
+                                                         status_number[status] + " ",
+                                                         ["span", {"class":status_class(status)}, status]]]);
                                         }
                                         i++;
                                     }
@@ -3465,6 +3466,51 @@ policies and contribution forms [3].
             return '';
         }
 
+        var asserts_run_by_test = new Map();
+        asserts_run.forEach(assert => {
+            if (!asserts_run_by_test.has(assert.test)) {
+                asserts_run_by_test.set(assert.test, []);
+            }
+            asserts_run_by_test.get(assert.test).push(assert);
+        });
+
+        function get_asserts_output(test) {
+            var asserts = asserts_run_by_test.get(test);
+            if (!asserts) {
+                return "No asserts ran";
+            }
+            rv = "<table>"
+            rv += asserts.map(assert => {
+                var output_fn = "<strong>" + escape_html(assert.assert_name) + "</strong>(";
+                var prefix_len = output_fn.length;
+                var output_args = assert.args.map(arg => arg.split('\n', 1)[0]);
+                var output_len = output_args.reduce((prev, current) => prev+current, prefix_len);
+                if (output_len[output_len.length - 1] > 50) {
+                    output_args = output_args.map((x, i) =>
+                    (i > 0 ? "  ".repeat(prefix_len) : "" )+ x + (i < output_args.length - 1 ? ",\n" : ""));
+                } else {
+                    output_args = output_args.map((x, i) => x + (i < output_args.length - 1 ? ", " : ""));
+                }
+                output_fn += escape_html(output_args.join(""));
+                output_fn += ')';
+                var output_location;
+                if (assert.stack) {
+                    output_location = assert.stack.split("\n", 1)[0].replace(/@?\w+:\/\/[^ "\/]+(?::\d+)?/g, " ");
+                }
+                return "<tr><td class=" +
+                    status_class(status_text[assert.status]) + ">" +
+                    status_text[assert.status] + "</td>" +
+                    "</td>" +
+                    "<td><pre>" +
+                    output_fn +
+                    (output_location ? "\n" + escape_html(output_location) : "") +
+                    "</pre></td></tr>";
+            }
+            ).join("\n");
+            rv += "</table>";
+            return rv;
+        }
+
         log.appendChild(document.createElementNS(xhtml_ns, "section"));
         var assertions = has_assertions();
         var html = "<h2>Details</h2><table id='results' " + (assertions ? "class='assertions'" : "" ) + ">" +
@@ -3473,18 +3519,20 @@ policies and contribution forms [3].
             "<th>Message</th></tr></thead>" +
             "<tbody>";
         for (var i = 0; i < tests.length; i++) {
-            html += '<tr class="' +
-                escape_html(status_class(status_text[tests[i].status])) +
-                '"><td>' +
-                escape_html(status_text[tests[i].status]) +
+            var test = tests[i];
+            html += '<tr><td class="' +
+                status_class(status_text[test.status]) +
+                '">' +
+                status_text[test.status] +
                 "</td><td>" +
-                escape_html(tests[i].name) +
+                escape_html(test.name) +
                 "</td><td>" +
-                (assertions ? escape_html(get_assertion(tests[i])) + "</td><td>" : "") +
-                escape_html(tests[i].message ? tests[i].message : " ") +
+                (assertions ? escape_html(get_assertion(test)) + "</td><td>" : "") +
+                escape_html(test.message ? tests[i].message : " ") +
                 (tests[i].stack ? "<pre>" +
                  escape_html(tests[i].stack) +
                  "</pre>": "") +
+                 "<details><summary>Asserts run</summary>" + get_asserts_output(test) + "</details>"
                 "</td></tr>";
         }
         html += "</tbody></table>";
@@ -4050,54 +4098,62 @@ table#results {\
     width:100%;\
 }\
 \
-table#results th:first-child,\
-table#results td:first-child {\
+table#results > thead > tr > th:first-child,\
+table#results > tbody > tr > td:first-child {\
     width:8em;\
 }\
 \
-table#results th:last-child,\
-table#results td:last-child {\
+table#results > thead > tr > th:last-child,\
+table#results > thead > tr > td:last-child {\
     width:50%;\
 }\
 \
-table#results.assertions th:last-child,\
-table#results.assertions td:last-child {\
+table#results.assertions > thead > tr > th:last-child,\
+table#results.assertions > tbody > tr > td:last-child {\
     width:35%;\
 }\
 \
-table#results th {\
+table#results > thead > > tr > th {\
     padding:0;\
     padding-bottom:0.5em;\
     border-bottom:medium solid black;\
 }\
 \
-table#results td {\
+table#results > tbody > tr> td {\
     padding:1em;\
     padding-bottom:0.5em;\
     border-bottom:thin solid black;\
 }\
 \
-tr.pass > td:first-child {\
+.pass {\
     color:green;\
 }\
 \
-tr.fail > td:first-child {\
+.fail {\
     color:red;\
 }\
 \
-tr.timeout > td:first-child {\
+tr.timeout {\
     color:red;\
 }\
 \
-tr.notrun > td:first-child {\
+tr.notrun {\
     color:blue;\
 }\
 \
-tr.optionalunsupported > td:first-child {\
+tr.optionalunsupported {\
     color:blue;\
 }\
 \
-.pass > td:first-child, .fail > td:first-child, .timeout > td:first-child, .notrun > td:first-child, .optionalunsupported > td:first-child {\
+.ok {\
+    color:green;\
+}\
+\
+.error {\
+    color:red;\
+}\
+\
+.pass, .fail, .timeout, .notrun, .optionalunsupported .ok, .timeout, .error {\
     font-variant:small-caps;\
 }\
 \
@@ -4113,22 +4169,6 @@ table#results span.expected {\
 table#results span.actual {\
     font-family:DejaVu Sans Mono, Bitstream Vera Sans Mono, Monospace;\
     white-space:pre;\
-}\
-\
-span.ok {\
-    color:green;\
-}\
-\
-tr.error {\
-    color:red;\
-}\
-\
-span.timeout {\
-    color:red;\
-}\
-\
-span.ok, span.timeout, span.error {\
-    font-variant:small-caps;\
 }\
 ";
 
